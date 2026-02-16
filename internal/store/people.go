@@ -62,7 +62,7 @@ func (store *PersonStore) Search(ctx context.Context, query string) ([]Person, e
 	out := make([]Person, 0, 16)
 	for rows.Next() {
 		var p Person
-		if err := rows.Scan(&p.ID, &p.DisplayName, &p.DisambiguationTag, &p.IsHidden); err != nil {
+		if err := rows.Scan(&p.ID, &p.Category, &p.DisplayName, &p.DisambiguationTag, &p.IsHidden); err != nil {
 			return nil, fmt.Errorf("store: person scan: %w", err)
 		}
 		out = append(out, p)

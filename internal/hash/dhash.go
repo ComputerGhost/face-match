@@ -12,7 +12,7 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-func DHash64(imgBytes []byte) (uint64, error) {
+func DHash64(imgBytes []byte) (int64, error) {
 	img, _, err := image.Decode(bytes.NewReader(imgBytes))
 	if err != nil {
 		return 0, fmt.Errorf("dhash: decode: %w", err)
@@ -20,7 +20,7 @@ func DHash64(imgBytes []byte) (uint64, error) {
 	return DHash64FromImage(img), nil
 }
 
-func DHash64FromImage(img image.Image) uint64 {
+func DHash64FromImage(img image.Image) int64 {
 	dst := image.NewRGBA(image.Rect(0, 0, 9, 8))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
 
@@ -38,7 +38,8 @@ func DHash64FromImage(img image.Image) uint64 {
 			bit++
 		}
 	}
-	return h
+
+	return int64(h)
 }
 
 func luma8(c color.Color) uint8 {

@@ -61,8 +61,8 @@ func FetchEmbedding(ctx context.Context, endpoint string, imageBytes []byte) ([]
 }
 
 func buildRequest(ctx context.Context, url string, imageBytes []byte) (*http.Request, error) {
-	var body *bytes.Buffer
-	writer := multipart.NewWriter(body)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormFile("file", "upload.jpg")
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func buildRequest(ctx context.Context, url string, imageBytes []byte) (*http.Req
 		return nil, err
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &body)
 	if err != nil {
 		return nil, fmt.Errorf("FetchEmbedding: new request: %w", err)
 	}

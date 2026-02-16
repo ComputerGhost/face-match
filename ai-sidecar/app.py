@@ -25,7 +25,7 @@ GPU_ID = int(os.getenv("GPU_ID", "-1"))
 # Model root preparation
 # ---------------------------
 
-_face_app: Optional[FaceAnalysis] = None
+_analyzer: Optional[FaceAnalysis] = None
 
 def _load_models() -> FaceAnalysis:
     model_dir = snapshot_download(
@@ -33,16 +33,16 @@ def _load_models() -> FaceAnalysis:
         local_dir=MODEL_DIR
     )
 
-    app = FaceAnalysis(
-        name="auraface",
-        root=root,
+    analyzer = FaceAnalysis(
+        name="buffalo_l",
+        root=MODEL_DIR,
         providers=PROVIDERS,
     )
 
     # ctx_id: -1 = CPU, 0+ = GPU index in InsightFace terms
     # det_size: influences detector
-    app.prepare(ctx_id=GPU_ID, det_size=DET_SIZE_TUPLE)
-    return app
+    analyzer.prepare(ctx_id=GPU_ID, det_size=DET_SIZE_TUPLE)
+    return analyzer
 
 
 def _decode_image(image_bytes: bytes) -> np.ndarray:
@@ -78,11 +78,13 @@ def _pick_largest_face(faces: list[Any]) -> Any:
 # FastAPI lifecycle
 # ---------------------------
 
+APP = FastAPI()
+
 @APP.on_event("startup")
 def startup() -> None:
-    global _face_app
+    global _analyzer
     try:
-        _face_app = _load_models()
+        _analyzer = _load_models()
     except Exception as e:
         # Crash early with a clear message; container orchestrators will restart.
         print(f"[startup] failed to load models: {e}", file=sys.stderr)
@@ -100,7 +102,7 @@ async def embed_largest_face(file: UploadFile = File(...)) -> JSONResponse:
         "det_score": <float or null>
       }
     """
-    global _face_app
+    global _analyzer
 
     data = await file.read()
     if not data:
@@ -111,14 +113,14 @@ async def embed_largest_face(file: UploadFile = File(...)) -> JSONResponse:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    faces = _face_app.get(img)
+    faces = _analyzer.get(img)
     face = _pick_largest_face(faces)
     if face is None:
         raise HTTPException(status_code=422, detail="No face detected")
 
     emb = getattr(face, "embedding", None)
     emb = np.asarray(emb, dtype=np.float32)
-    
+
     # Normalize (cosine similarity expects unit length)
     norm = np.linalg.norm(emb)
     if norm > 0:
@@ -133,5 +135,13 @@ async def embed_largest_face(file: UploadFile = File(...)) -> JSONResponse:
             "dim": int(emb.shape[0]),
             "bbox": bbox,
             "det_score": det_score,
+        }
+    )
+
+@APP.get("/healthz")
+async def health_check() -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "okay"
         }
     )

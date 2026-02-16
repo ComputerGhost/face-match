@@ -22,4 +22,6 @@ Used by the Python AI
 
 ## Usage
 
- 1. Run the ai-sidecar and note the URL it's running at.
+See the "scripts" folder. Run these from the project root.
+
+Run the AI sidecar first, because that's needed by the other programs. Run the ingest to populate the data. Finally run the server to play around with the AI.

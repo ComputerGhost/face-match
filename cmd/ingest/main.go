@@ -59,7 +59,7 @@ func main() {
 
 	rootCmd.AddCommand(cmdCategories(dependencies))
 	rootCmd.AddCommand(cmdImport(dependencies))
-	rootCmd.AddCommand(cmdPeople(dependencies))
+	rootCmd.AddCommand(cmdSearch(dependencies))
 	rootCmd.AddCommand(cmdPerson(dependencies))
 
 	ctx := context.Background()
@@ -69,13 +69,8 @@ func main() {
 }
 
 func cmdCategories(dependencies *Dependencies) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "categories",
-		Short: "Category operations",
-	}
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
 		Short: "List all categories",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cs := store.NewCategoryStore(dependencies.Pool)
@@ -88,9 +83,7 @@ func cmdCategories(dependencies *Dependencies) *cobra.Command {
 			}
 			return nil
 		},
-	})
-
-	return cmd
+	}
 }
 
 func cmdImport(dependencies *Dependencies) *cobra.Command {
@@ -113,15 +106,10 @@ func cmdImport(dependencies *Dependencies) *cobra.Command {
 	return cmd
 }
 
-func cmdPeople(dependencies *Dependencies) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "people",
-		Short: "People lookup helpers",
-	}
-
+func cmdSearch(dependencies *Dependencies) *cobra.Command {
 	var q string
 
-	cmdSearch := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Search people by name",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -131,15 +119,14 @@ func cmdPeople(dependencies *Dependencies) *cobra.Command {
 				return err
 			}
 			for _, p := range people {
-				fmt.Printf("%d\t%s\t%s\thidden=%v", p.ID, p.DisplayName, p.DisambiguationTag, p.IsHidden)
+				fmt.Printf("%d\t%s\t%s\thidden=%v\n", p.ID, p.DisplayName, p.DisambiguationTag, p.IsHidden)
 			}
 			return nil
 		},
 	}
-	cmdSearch.Flags().StringVar(&q, "q", "", "Query String (required)")
-	_ = cmdSearch.MarkFlagRequired("q")
+	cmd.Flags().StringVar(&q, "q", "", "Query String (required)")
+	_ = cmd.MarkFlagRequired("q")
 
-	cmd.AddCommand(cmdSearch)
 	return cmd
 }
 

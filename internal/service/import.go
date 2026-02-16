@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/face-match/internal/ai"
@@ -88,9 +89,7 @@ func fetchInputFiles(config *app.Config) ([]string, error) {
 	return imageFiles, nil
 }
 
-func processFile(ctx context.Context, config *app.Config, dependencies *Dependencies, categoryId int64, filePath string) error {
-	filename := filepath.Base(filePath)
-
+func processFile(ctx context.Context, config *app.Config, dependencies *Dependencies, categoryId int64, filename string) error {
 	name, tag, err := parseInboxFilename(filename)
 	if err != nil {
 		return fmt.Errorf("service: parse inbox filename: %w", err)
@@ -107,7 +106,7 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 		return fmt.Errorf("upsert person: %w", err)
 	}
 
-	imageBytes, err := os.ReadFile(filePath)
+	imageBytes, err := os.ReadFile(filepath.Join(config.InputPath, filename))
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
 	}
@@ -116,9 +115,12 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 	if err != nil {
 		return fmt.Errorf("hash image: %w", err)
 	}
-	_, err = dependencies.imageStore.VerifyNoHash(ctx, imageHash)
+	exists, err := dependencies.imageStore.VerifyNoHash(ctx, imageHash)
 	if err != nil {
 		return fmt.Errorf("fetch id by hash: %w", err)
+	}
+	if exists {
+		return fmt.Errorf("image already processed")
 	}
 
 	embedding, err := ai.FetchEmbedding(ctx, config.AIEndpoint, imageBytes)
@@ -139,7 +141,7 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 
 	// TODO save thumbnail
 
-	if err := os.Rename(filePath, filepath.Join(config.FinishedPath, filename)); err != nil {
+	if err := os.Rename(filepath.Join(config.InputPath, filename), filepath.Join(config.FinishedPath, filename)); err != nil {
 		return fmt.Errorf("move to ok: %w", err)
 	}
 
@@ -151,24 +153,31 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 // - "Bob Marley.jpg" -> name = "Bob Marley", tag = ""
 // - "Park Jeonghwa [exid].jpg" -> name="Park Jeonghwa", tag="exid"
 func parseInboxFilename(filename string) (string, string, error) {
+	// Trim extension
 	extension := filepath.Ext(filename)
 	base := strings.TrimSuffix(filename, extension)
+
+	// Trim copy count
+	extension = filepath.Ext(base)
+	if _, err := strconv.ParseFloat(extension, 64); err == nil {
+		base = strings.TrimSuffix(base, extension)
+	}
+
+	var tag string = ""
+	var name string = ""
 
 	// Look for disambiguation tag
 	tagStart := strings.LastIndex(base, "[")
 	tagEnd := strings.LastIndex(base, "]")
 	if tagStart != -1 && tagEnd == len(base)-1 && tagStart < tagEnd {
-		tag := strings.TrimSpace(base[tagStart+1 : tagEnd])
-		name := strings.TrimSpace(base[:tagStart])
-		if name == "" {
-			return "", "", fmt.Errorf("invalid filename (empty name): %s", filename)
-		}
-		return name, tag, nil
+		tag = strings.TrimSpace(base[tagStart+1 : tagEnd])
+		name = strings.TrimSpace(base[:tagStart])
+	} else {
+		name = strings.TrimSpace(base)
 	}
 
-	name := strings.TrimSpace(base)
 	if name == "" {
 		return "", "", fmt.Errorf("invalid filename (empty name): %s", filename)
 	}
-	return name, "", nil
+	return name, tag, nil
 }
