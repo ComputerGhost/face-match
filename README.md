@@ -1,12 +1,25 @@
 # face-match
 Simple face search website and tools
 
-I am learning the Go language, and this is my "Hello, world!" I make no guarantees about quality. I make no promises about future updates.
+I am learning the Go language, and this is my "Hello, world!"
 
 ## Setup
 
-TBD
+ 1. Create a new PostgreSQL dataabse
+ 2. Set the environment variables
+
+### Environment variables
+
+Used by ingest, server, and similar Go tools
+ * AI_ENDPOINT
+ * DATABASE_URL
+ * DATA_ROOT
+
+Used by the Python AI
+ * MODEL_DIR - default: ./models
+ * ORT_PROVIDERS  - default: CPUExecutionProvider
+ * GPU_ID         - default: -1
 
 ## Usage
 
-TBD
+ 1. Run the ai-sidecar and note the URL it's running at.
