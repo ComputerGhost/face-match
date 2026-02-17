@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 )
@@ -13,6 +14,11 @@ type Image struct {
 	PersonID   int64
 	ImageHash  int64
 	Embedding  []float32
+
+	// Returned from reading but not used in writing
+	DisplayName       string
+	DisambiguationTag string
+	CosineDistance    float32
 }
 
 type ImageStore struct {
@@ -42,4 +48,38 @@ func (store *ImageStore) Insert(ctx context.Context, image *Image) (int64, error
 		RETURNING id
 	`, image.CategoryID, image.PersonID, image.ImageHash, vec).Scan(&id)
 	return id, err
+}
+
+func (store *ImageStore) Search(ctx context.Context, categoryIDs []int64, embedding []float32) ([]Image, error) {
+	if len(categoryIDs) == 0 {
+		return nil, nil
+	}
+
+	query := `
+		SELECT i.id, i.category_id, i.person_id, p.display_name, p.disambiguation_tag,
+			   i.embedding <=> $2 AS cosine_distance
+		FROM images i
+		JOIN people p ON p.id = i.person_id
+		WHERE i.category_id = ANY($1)
+		ORDER BY cosine_distance
+		LIMIT 10`
+	vec := pgvector.NewVector(embedding)
+	rows, err := store.pool.Query(ctx, query, categoryIDs, vec)
+	if err != nil {
+		return nil, fmt.Errorf("search: images select: %s", err)
+	}
+	defer rows.Close()
+
+	out := make([]Image, 0, 10)
+	for rows.Next() {
+		var image Image
+		if err := rows.Scan(&image.ID, &image.CategoryID, &image.PersonID, &image.DisplayName, &image.DisambiguationTag, &image.CosineDistance); err != nil {
+			return nil, fmt.Errorf("search: images scan: %s", err)
+		}
+		out = append(out, image)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("search: images rows: %s", err)
+	}
+	return out, nil
 }

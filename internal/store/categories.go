@@ -10,7 +10,6 @@ import (
 type Category struct {
 	ID          int64
 	DisplayName string
-	IsNsfw      bool
 }
 
 type CategoryStore struct {
@@ -32,10 +31,7 @@ func (store *CategoryStore) FetchId(ctx context.Context, category string) (int64
 }
 
 func (store *CategoryStore) List(ctx context.Context) ([]Category, error) {
-	rows, err := store.pool.Query(ctx, `
-		SELECT id, display_name, is_nsfw
-		FROM categories
-	`)
+	rows, err := store.pool.Query(ctx, `SELECT id, display_name FROM categories ORDER BY display_name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: categories list: %w", err)
 	}
@@ -44,7 +40,7 @@ func (store *CategoryStore) List(ctx context.Context) ([]Category, error) {
 	out := make([]Category, 0, 16)
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.DisplayName, &c.IsNsfw); err != nil {
+		if err := rows.Scan(&c.ID, &c.DisplayName); err != nil {
 			return nil, fmt.Errorf("store: categories scan: %w", err)
 		}
 		out = append(out, c)

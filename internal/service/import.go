@@ -17,34 +17,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Dependencies struct {
+type ImportService struct {
+	config        *app.Config
 	categoryStore *store.CategoryStore
 	imageStore    *store.ImageStore
 	personStore   *store.PersonStore
 }
 
-type ImportService struct {
-	config       *app.Config
-	dependencies *Dependencies
-}
-
 func NewImportService(config *app.Config, pool *pgxpool.Pool) *ImportService {
-	categoryStore := store.NewCategoryStore(pool)
-	imageStore := store.NewImageStore(pool)
-	personStore := store.NewPersonStore(pool)
-	dependencies := &Dependencies{
-		categoryStore,
-		imageStore,
-		personStore,
-	}
 	return &ImportService{
-		config:       config,
-		dependencies: dependencies,
+		config:        config,
+		categoryStore: store.NewCategoryStore(pool),
+		imageStore:    store.NewImageStore(pool),
+		personStore:   store.NewPersonStore(pool),
 	}
 }
 
 func (service *ImportService) Import(ctx context.Context, category string) error {
-	categoryId, err := service.dependencies.categoryStore.FetchId(ctx, category)
+	categoryId, err := service.categoryStore.FetchId(ctx, category)
 	if err != nil {
 		return fmt.Errorf("service: fetch category id: %w", err)
 	}
@@ -57,7 +47,7 @@ func (service *ImportService) Import(ctx context.Context, category string) error
 		len(files), service.config.InputPath, categoryId)
 
 	for _, f := range files {
-		if err := processFile(ctx, service.config, service.dependencies, categoryId, f); err != nil {
+		if err := processFile(ctx, service, categoryId, f); err != nil {
 			log.Printf("Error processing file %s: %v", f, err)
 		}
 	}
@@ -89,7 +79,7 @@ func fetchInputFiles(config *app.Config) ([]string, error) {
 	return imageFiles, nil
 }
 
-func processFile(ctx context.Context, config *app.Config, dependencies *Dependencies, categoryId int64, filename string) error {
+func processFile(ctx context.Context, service *ImportService, categoryId int64, filename string) error {
 	name, tag, err := parseInboxFilename(filename)
 	if err != nil {
 		return fmt.Errorf("service: parse inbox filename: %w", err)
@@ -101,12 +91,12 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 		DisambiguationTag: tag,
 		IsHidden:          false,
 	}
-	personID, err := dependencies.personStore.Upsert(ctx, &person)
+	personID, err := service.personStore.Upsert(ctx, &person)
 	if err != nil {
 		return fmt.Errorf("upsert person: %w", err)
 	}
 
-	imageBytes, err := os.ReadFile(filepath.Join(config.InputPath, filename))
+	imageBytes, err := os.ReadFile(filepath.Join(service.config.InputPath, filename))
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
 	}
@@ -115,7 +105,7 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 	if err != nil {
 		return fmt.Errorf("hash image: %w", err)
 	}
-	exists, err := dependencies.imageStore.VerifyNoHash(ctx, imageHash)
+	exists, err := service.imageStore.VerifyNoHash(ctx, imageHash)
 	if err != nil {
 		return fmt.Errorf("fetch id by hash: %w", err)
 	}
@@ -123,7 +113,7 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 		return fmt.Errorf("image already processed")
 	}
 
-	embedding, err := ai.FetchEmbedding(ctx, config.AIEndpoint, imageBytes)
+	embedding, err := ai.FetchEmbedding(ctx, service.config.AIEndpoint, imageBytes)
 	if err != nil {
 		return fmt.Errorf("fetch embedding: %w", err)
 	}
@@ -134,14 +124,14 @@ func processFile(ctx context.Context, config *app.Config, dependencies *Dependen
 		ImageHash:  imageHash,
 		Embedding:  embedding,
 	}
-	imageID, err := dependencies.imageStore.Insert(ctx, &image)
+	imageID, err := service.imageStore.Insert(ctx, &image)
 	if err != nil {
 		return fmt.Errorf("insert image: %w", err)
 	}
 
 	// TODO save thumbnail
 
-	if err := os.Rename(filepath.Join(config.InputPath, filename), filepath.Join(config.FinishedPath, filename)); err != nil {
+	if err := os.Rename(filepath.Join(service.config.InputPath, filename), filepath.Join(service.config.FinishedPath, filename)); err != nil {
 		return fmt.Errorf("move to ok: %w", err)
 	}
 

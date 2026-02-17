@@ -79,7 +79,7 @@ func cmdCategories(dependencies *Dependencies) *cobra.Command {
 				return err
 			}
 			for _, c := range categories {
-				fmt.Printf("%d\t%s\tnsfw=%v\n", c.ID, c.DisplayName, c.IsNsfw)
+				fmt.Printf("%d\t%s\n", c.ID, c.DisplayName)
 			}
 			return nil
 		},

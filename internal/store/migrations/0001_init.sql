@@ -4,8 +4,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE categories (
     id BIGSERIAL PRIMARY KEY,
-    display_name TEXT NOT NULL,
-    is_nsfw BOOL NOT NULL DEFAULT false
+    display_name TEXT NOT NULL
 );
 
 CREATE TABLE people (
