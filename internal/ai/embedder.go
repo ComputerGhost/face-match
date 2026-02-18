@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -18,7 +21,7 @@ type EmbeddingOkResponse struct {
 	Embedding []float64 `json:"embedding"`
 	Dim       int       `json:"dim"`
 	BBox      []float64 `json:"bbox"`
-	DetScore  *float64  `json:"det_score"`
+	DetScore  float64   `json:"det_score"`
 }
 
 func FetchEmbedding(ctx context.Context, endpoint string, imageBytes []byte) ([]float32, error) {
@@ -52,6 +55,9 @@ func FetchEmbedding(ctx context.Context, endpoint string, imageBytes []byte) ([]
 	if err != nil {
 		return nil, fmt.Errorf("FetchEmbedding: error processing response: %v", err)
 	}
+	if _, err := isFoundFaceGood(result, imageBytes); err != nil {
+		return nil, fmt.Errorf("FetchEmbedding: error checking face: %v", err)
+	}
 
 	embedding := make([]float32, len(result.Embedding))
 	for i, v := range result.Embedding {
@@ -80,6 +86,95 @@ func buildRequest(ctx context.Context, url string, imageBytes []byte) (*http.Req
 	}
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	return request, nil
+}
+
+func isFoundFaceGood(result *EmbeddingOkResponse, imageBytes []byte) (bool, error) {
+	if result.DetScore < 0.5 {
+		return false, fmt.Errorf("det score of %f is too low", result.DetScore)
+	}
+
+	faceHeight := result.BBox[3] - result.BBox[1]
+	if faceHeight < 92 {
+		return false, fmt.Errorf("face height of %f is too small", faceHeight)
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		return false, fmt.Errorf("decode: %v", err)
+	}
+	b := img.Bounds()
+	if b.Empty() {
+		return false, fmt.Errorf("empty image")
+	}
+
+	// Clamp bbox to image bounds
+	x1 := int(math.Floor(result.BBox[0]))
+	y1 := int(math.Floor(result.BBox[1]))
+	x2 := int(math.Ceil(result.BBox[2]))
+	y2 := int(math.Ceil(result.BBox[3]))
+	if x1 < b.Min.X {
+		x1 = b.Min.X
+	}
+	if y1 < b.Min.Y {
+		y1 = b.Min.Y
+	}
+	if x2 > b.Max.X {
+		x2 = b.Max.X
+	}
+	if y2 > b.Max.Y {
+		y2 = b.Max.Y
+	}
+
+	if x2-x1 < 8 || y2-y1 < 8 {
+		// Too small to blur meaningfully
+		return false, fmt.Errorf("face crop too small (%dx%d)", x2-x1, y2-y1)
+	}
+
+	crop := image.Rect(x1, y1, x2, y2)
+
+	w := crop.Dx()
+	h := crop.Dy()
+	gray := make([]float64, w*h)
+
+	i := 0
+	for y := crop.Min.Y; y < crop.Max.Y; y++ {
+		for x := crop.Min.X; x < crop.Max.X; x++ {
+			gray[i] = float64(luma8(img.At(x, y)))
+			i++
+		}
+	}
+
+	var sum, sumSq float64
+	for y := 1; y < h-1; y++ {
+		row := y * w
+		for x := 1; x < w-1; x++ {
+			c := gray[row+x]
+			l := gray[row+x-1]
+			r := gray[row+x+1]
+			u := gray[row-w+x]
+			d := gray[row+w+x]
+			lap := (-4.0 * c) + l + r + u + d
+			sum += lap
+			sumSq += lap * lap
+		}
+	}
+	mean := sum / float64(h*w)
+	variance := (sumSq / float64(h*w)) - (mean * mean)
+
+	if variance < 20 {
+		return false, fmt.Errorf("variance %f is too low", variance)
+	}
+
+	return true, nil
+}
+
+func luma8(c color.Color) uint8 {
+	r, g, b, _ := c.RGBA()
+	R := uint32(r >> 8)
+	G := uint32(g >> 8)
+	B := uint32(b >> 8)
+	Y := (299*R + 587*G + 114*B + 500) / 1000
+	return uint8(Y)
 }
 
 func processResponse(response *http.Response) (*EmbeddingOkResponse, error) {

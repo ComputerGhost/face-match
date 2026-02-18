@@ -25,10 +25,10 @@ func NewPersonStore(pool *pgxpool.Pool) *PersonStore {
 }
 
 func (store *PersonStore) Purge(ctx context.Context, personID int64) error {
-	if _, err := store.pool.Exec(ctx, `DELETE FROM people WHERE id = $1`, personID); err != nil {
+	if _, err := store.pool.Exec(ctx, `DELETE FROM images WHERE person_id = $1`, personID); err != nil {
 		return fmt.Errorf("store: person purge: %w", err)
 	}
-	if _, err := store.pool.Exec(ctx, `DELETE FROM images WHERE person_id = $1`, personID); err != nil {
+	if _, err := store.pool.Exec(ctx, `DELETE FROM people WHERE id = $1`, personID); err != nil {
 		return fmt.Errorf("store: person purge: %w", err)
 	}
 	return nil

@@ -85,6 +85,18 @@ func processFile(ctx context.Context, service *ImportService, categoryId int64, 
 		return fmt.Errorf("service: parse inbox filename: %w", err)
 	}
 
+	imageBytes, err := os.ReadFile(filepath.Join(service.config.InputPath, filename))
+	if err != nil {
+		return fmt.Errorf("read file: %w", err)
+	}
+
+	embedding, err := ai.FetchEmbedding(ctx, service.config.AIEndpoint, imageBytes)
+	if err != nil {
+		return fmt.Errorf("fetch embedding: %w", err)
+	}
+
+	// Save person to database:
+
 	person := store.Person{
 		CategoryId:        categoryId,
 		DisplayName:       name,
@@ -96,10 +108,7 @@ func processFile(ctx context.Context, service *ImportService, categoryId int64, 
 		return fmt.Errorf("upsert person: %w", err)
 	}
 
-	imageBytes, err := os.ReadFile(filepath.Join(service.config.InputPath, filename))
-	if err != nil {
-		return fmt.Errorf("read file: %w", err)
-	}
+	// Save image to database:
 
 	imageHash, err := hash.DHash64(imageBytes)
 	if err != nil {
@@ -113,11 +122,6 @@ func processFile(ctx context.Context, service *ImportService, categoryId int64, 
 		return fmt.Errorf("image already processed")
 	}
 
-	embedding, err := ai.FetchEmbedding(ctx, service.config.AIEndpoint, imageBytes)
-	if err != nil {
-		return fmt.Errorf("fetch embedding: %w", err)
-	}
-
 	image := store.Image{
 		CategoryID: categoryId,
 		PersonID:   personID,
@@ -129,8 +133,7 @@ func processFile(ctx context.Context, service *ImportService, categoryId int64, 
 		return fmt.Errorf("insert image: %w", err)
 	}
 
-	// TODO save thumbnail
-
+	// Move/create files:
 	if err := os.Rename(filepath.Join(service.config.InputPath, filename), filepath.Join(service.config.FinishedPath, filename)); err != nil {
 		return fmt.Errorf("move to ok: %w", err)
 	}
