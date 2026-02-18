@@ -49,7 +49,7 @@ function wireSubmit($form, $resultsContainer) {
                     const display = !!tag ? `${name} (${tag})` : name;
                     const category = categories[result.CategoryID];
                     const containerEl = $(`<div class="search-result"/>`)
-                        .append($(`<h3 class="h5">${escape(display)}</h3>`))
+                        .append($(`<h3 class="h5"><a href="https://www.google.com/search?q=${escape(display)}+${escape(category)}">${escape(display)}</a</h3>`))
                         .append($(`<div>Category: ${category}</div>`))
                         .append($(`<div>Similarity Score: ${score.toFixed(2)}</div>`))
                     $resultsContainer.append(containerEl);
